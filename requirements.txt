@@ -1,0 +1,4 @@
+sqlalchemy==2.0.23
+pymysql==1.1.0
+cryptography==41.0.7  # 用于MySQL密码加密
+python-dotenv==1.0.0  # 用于环境变量管理 
