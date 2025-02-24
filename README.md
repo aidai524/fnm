@@ -54,7 +54,7 @@ python utils/db_tools.py
 
 ### 项目权重排序 API
 
-获取按权重排序的项目列表，优先展示特定平台（如"pump"）的项目，并按时间倒序排列。
+获取按权重排序的项目列表，优先展示特定平台的项目，并按时间倒序排列。
 
 #### 接口信息
 
@@ -63,6 +63,57 @@ python utils/db_tools.py
 - 参数:
   - `page`: 页码（从1开始）
   - `per_page`: 每页记录数（默认5）
+
+#### 权重计算说明
+
+项目权重基于以下因素计算：
+
+1. 平台基础权重：
+   - 'sexy' 平台: 100000 分（最高优先级）
+   - 'pump' 平台: 100 分
+   - 其他平台: 0 分
+
+2. 时间权重：
+   ```python
+   time_weight = (unix_timestamp(created_at) / 86400 * 10 * exp(-0.05 * datediff(now(), created_at)))
+   ```
+   - 使用创建时间计算
+   - 每天衰减5%
+   - 基础时间系数为10
+
+3. 活跃度权重：
+   ```python
+   activity_weight = (
+       log(1 + share_num) * 5 +   # 分享权重
+       log(1 + like) * 3 +        # 点赞权重
+       log(1 + launched_like) +    # launched后点赞权重
+       log(1 + comment)           # 评论权重
+   )
+   ```
+   - 使用对数函数避免数值差距过大
+   - 分享数权重最高（5分/个）
+   - 点赞数次之（3分/个）
+   - launched后点赞和评论各1分/个
+
+4. 随机因子：
+   ```python
+   random_weight = rand() * 0.01 * platform_weight
+   ```
+   - 添加1%的随机波动
+   - 随机因子与平台权重相关
+   - 用于打散相同权重的记录
+
+#### 最终权重计算
+
+```python
+final_weight = platform_weight + time_weight + activity_weight + random_weight
+```
+
+排序效果：
+1. 'sexy' 平台的所有项目都会排在 'pump' 平台之前
+2. 在同一平台内，优先展示最新的项目
+3. 活跃度（分享、点赞、评论）会影响同期项目的排序
+4. 添加少量随机波动，避免排序过于固定
 
 #### 请求示例
 
@@ -80,7 +131,7 @@ curl -X GET "http://localhost:8000/projects/weighted?page=2&per_page=10" -H "acc
 [
   {
     "id": 16765,
-    "dapp": "pump",
+    "dapp": "sexy",
     "time": 1740378176000,
     "share_num": 0,
     "like": 4,
@@ -94,18 +145,13 @@ curl -X GET "http://localhost:8000/projects/weighted?page=2&per_page=10" -H "acc
 ]
 ```
 
-#### 权重计算说明
-
-项目权重基于以下因素计算：
-1. 平台优先级：特定平台（如"pump"）的项目获得更高权重
-2. 时间因素：最新的项目优先展示
-3. 互动指标：考虑点赞数、评论数等用户互动数据
-
 #### 注意事项
 
 - API 使用分页机制，建议合理设置 per_page 参数避免返回数据过大
 - 时间戳使用毫秒级 Unix 时间戳
 - 所有时间相关字段均为 UTC 时间
+- 由于加入了随机因子，每次请求的具体排序可能略有不同
+- 在当前数据集中，'sexy' 平台约有455条数据，'pump' 平台约有12,736条数据
 
 ## 注意事项
 
